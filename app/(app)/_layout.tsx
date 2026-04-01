@@ -43,7 +43,7 @@ export default function AppLayout() {
       <Tabs.Screen
         name="sessions/[id]"
         options={{
-          href: null, // hide from tab bar
+          tabBarButton: () => null, // hide from tab bar
         }}
       />
       <Tabs.Screen
