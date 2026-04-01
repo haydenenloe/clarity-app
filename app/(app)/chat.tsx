@@ -10,6 +10,7 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native'
+import { Feather } from '@expo/vector-icons'
 import { supabase } from '../../lib/supabase'
 import { API_BASE_URL } from '../../constants/config'
 
@@ -125,7 +126,9 @@ export default function ChatScreen() {
         onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
         ListEmptyComponent={
           <View style={styles.emptyChat}>
-            <Text style={styles.emptyChatEmoji}>💬</Text>
+            <View style={styles.emptyIcon}>
+              <Feather name="message-circle" size={28} color="#555" />
+            </View>
             <Text style={styles.emptyChatText}>Ask anything about your sessions</Text>
             <Text style={styles.emptyChatSub}>
               Your AI co-pilot has read all your session notes and can help you reflect, spot patterns, and prepare for upcoming sessions.
@@ -171,7 +174,7 @@ export default function ChatScreen() {
           {loading ? (
             <ActivityIndicator size="small" color="#fff" />
           ) : (
-            <Text style={styles.sendIcon}>↑</Text>
+            <Feather name="send" size={18} color="#fff" />
           )}
         </TouchableOpacity>
       </View>
@@ -211,8 +214,13 @@ const styles = StyleSheet.create({
     paddingTop: 64,
     gap: 12,
   },
-  emptyChatEmoji: {
-    fontSize: 48,
+  emptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#1a1a1a',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 8,
   },
   emptyChatText: {
@@ -281,10 +289,5 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: {
     opacity: 0.4,
-  },
-  sendIcon: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
   },
 })

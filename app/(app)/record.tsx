@@ -16,10 +16,19 @@ import {
   RecordingPresets,
 } from 'expo-audio'
 import * as FileSystem from 'expo-file-system'
+import * as DocumentPicker from 'expo-document-picker'
+import { Feather } from '@expo/vector-icons'
 import { supabase } from '../../lib/supabase'
 import { API_BASE_URL } from '../../constants/config'
 
 type RecordingState = 'idle' | 'recording' | 'stopped' | 'uploading' | 'processing' | 'done'
+
+type PickedFile = {
+  uri: string
+  name: string
+  size: number
+  mimeType: string
+}
 
 export default function RecordScreen() {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY)
@@ -29,6 +38,7 @@ export default function RecordScreen() {
   const [elapsed, setElapsed] = useState(0)
   const [isBackground, setIsBackground] = useState(false)
   const [statusMessage, setStatusMessage] = useState('')
+  const [pickedFile, setPickedFile] = useState<PickedFile | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const appStateRef = useRef(AppState.currentState)
 
@@ -58,6 +68,11 @@ export default function RecordScreen() {
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
   }
 
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
+
   const startRecording = async () => {
     try {
       const { granted } = await requestRecordingPermissionsAsync()
@@ -81,6 +96,7 @@ export default function RecordScreen() {
       setState('recording')
       setElapsed(0)
       setRecordingUri(null)
+      setPickedFile(null)
 
       timerRef.current = setInterval(() => {
         setElapsed((e) => e + 1)
@@ -107,22 +123,43 @@ export default function RecordScreen() {
     }
   }
 
+  const pickFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'audio/*',
+        copyToCacheDirectory: true,
+      })
+      if (result.canceled) return
+
+      const file = result.assets[0]
+      setPickedFile({
+        uri: file.uri,
+        name: file.name,
+        size: file.size ?? 0,
+        mimeType: file.mimeType ?? 'audio/mpeg',
+      })
+      setState('stopped')
+      setRecordingUri(null)
+    } catch (err: any) {
+      Alert.alert('Error', `Could not pick file: ${err.message}`)
+    }
+  }
+
   const uploadAndProcess = async () => {
-    if (!recordingUri) return
+    const uri = pickedFile ? pickedFile.uri : recordingUri
+    if (!uri) return
 
     setState('uploading')
-    setStatusMessage('Uploading recording...')
+    setStatusMessage('Uploading...')
 
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error('Not authenticated')
 
-      // Read file as base64
-      const base64 = await FileSystem.readAsStringAsync(recordingUri, {
+      const base64 = await FileSystem.readAsStringAsync(uri, {
         encoding: FileSystem.EncodingType.Base64,
       })
 
-      // Convert to Uint8Array for Supabase upload
       const binaryString = atob(base64)
       const bytes = new Uint8Array(binaryString.length)
       for (let i = 0; i < binaryString.length; i++) {
@@ -130,21 +167,22 @@ export default function RecordScreen() {
       }
 
       const sessionId = `${Date.now()}`
-      const fileName = `${session.user.id}/${sessionId}.m4a`
+      const ext = pickedFile ? pickedFile.name.split('.').pop() || 'm4a' : 'm4a'
+      const fileName = `${session.user.id}/${sessionId}.${ext}`
+      const contentType = pickedFile ? pickedFile.mimeType : 'audio/mp4'
 
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('session-audio')
         .upload(fileName, bytes, {
-          contentType: 'audio/mp4',
+          contentType,
           upsert: false,
         })
 
       if (uploadError) throw uploadError
 
-      setStatusMessage('Processing session with AI...')
+      setStatusMessage('Processing with AI...')
       setState('processing')
 
-      // Create session record and trigger processing via API
       const response = await fetch(`${API_BASE_URL}/api/process`, {
         method: 'POST',
         headers: {
@@ -173,6 +211,7 @@ export default function RecordScreen() {
   const reset = () => {
     setState('idle')
     setRecordingUri(null)
+    setPickedFile(null)
     setElapsed(0)
     setStatusMessage('')
   }
@@ -192,35 +231,55 @@ export default function RecordScreen() {
             </Text>
           </View>
         )}
-        {state === 'stopped' && (
+        {state === 'stopped' && !pickedFile && (
           <Text style={styles.readyText}>Recording saved — ready to upload</Text>
         )}
       </View>
 
-      {/* Main action button */}
+      {/* Idle state: record button + upload option */}
       {state === 'idle' && (
-        <TouchableOpacity style={styles.recordBtn} onPress={startRecording}>
-          <Text style={styles.recordBtnIcon}>🎙️</Text>
-          <Text style={styles.recordBtnText}>Start Recording</Text>
-        </TouchableOpacity>
+        <>
+          <TouchableOpacity style={styles.recordBtn} onPress={startRecording}>
+            <Feather name="mic" size={44} color="#fff" style={{ marginBottom: 8 }} />
+            <Text style={styles.recordBtnText}>Start Recording</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.uploadFileBtn} onPress={pickFile}>
+            <Feather name="upload-cloud" size={20} color="#a78bfa" />
+            <Text style={styles.uploadFileBtnText}>Upload a file</Text>
+          </TouchableOpacity>
+        </>
       )}
 
       {state === 'recording' && (
         <TouchableOpacity style={[styles.recordBtn, styles.stopBtn]} onPress={stopRecording}>
-          <Text style={styles.recordBtnIcon}>⏹️</Text>
+          <Feather name="square" size={36} color="#fff" style={{ marginBottom: 8 }} />
           <Text style={styles.recordBtnText}>Stop Recording</Text>
         </TouchableOpacity>
       )}
 
       {state === 'stopped' && (
-        <View style={styles.actionRow}>
-          <TouchableOpacity style={[styles.actionBtn, styles.uploadBtn]} onPress={uploadAndProcess}>
-            <Text style={styles.actionBtnText}>⬆️ Upload & Process</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.actionBtn, styles.discardBtn]} onPress={reset}>
-            <Text style={styles.actionBtnText}>🗑️ Discard</Text>
-          </TouchableOpacity>
-        </View>
+        <>
+          {pickedFile && (
+            <View style={styles.fileCard}>
+              <Feather name="file" size={20} color="#6c47ff" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.fileName} numberOfLines={1}>{pickedFile.name}</Text>
+                <Text style={styles.fileSize}>{formatFileSize(pickedFile.size)}</Text>
+              </View>
+            </View>
+          )}
+          <View style={styles.actionRow}>
+            <TouchableOpacity style={[styles.actionBtn, styles.uploadBtn]} onPress={uploadAndProcess}>
+              <Feather name="upload" size={16} color="#fff" />
+              <Text style={styles.actionBtnText}>Upload & Process</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.actionBtn, styles.discardBtn]} onPress={reset}>
+              <Feather name="trash-2" size={16} color="#fff" />
+              <Text style={styles.actionBtnText}>Discard</Text>
+            </TouchableOpacity>
+          </View>
+        </>
       )}
 
       {(state === 'uploading' || state === 'processing') && (
@@ -232,7 +291,9 @@ export default function RecordScreen() {
 
       {state === 'done' && (
         <View style={styles.doneBox}>
-          <Text style={styles.doneEmoji}>✅</Text>
+          <View style={styles.doneIcon}>
+            <Feather name="check" size={32} color="#4ade80" />
+          </View>
           <Text style={styles.doneText}>{statusMessage}</Text>
           <TouchableOpacity style={styles.recordBtn} onPress={reset}>
             <Text style={styles.recordBtnText}>Record Another</Text>
@@ -242,7 +303,7 @@ export default function RecordScreen() {
 
       {state === 'idle' && (
         <View style={styles.infoBox}>
-          <Text style={styles.infoTitle}>About background recording</Text>
+          <Text style={styles.infoTitle}>Background recording</Text>
           <Text style={styles.infoText}>
             Clarity keeps recording even when you lock your screen or switch apps. Your full session is captured automatically.
           </Text>
@@ -315,25 +376,62 @@ const styles = StyleSheet.create({
     backgroundColor: '#ff4444',
     shadowColor: '#ff4444',
   },
-  recordBtnIcon: {
-    fontSize: 40,
-    marginBottom: 8,
-  },
   recordBtnText: {
     color: '#fff',
     fontSize: 13,
     fontWeight: '600',
   },
+  uploadFileBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 24,
+    backgroundColor: '#1a1a2e',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#2a2a4a',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  uploadFileBtnText: {
+    color: '#a78bfa',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  fileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    padding: 14,
+    gap: 12,
+    width: '100%',
+    marginBottom: 12,
+  },
+  fileName: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  fileSize: {
+    color: '#666',
+    fontSize: 12,
+    marginTop: 2,
+  },
   actionRow: {
     flexDirection: 'row',
     marginTop: 8,
+    width: '100%',
   },
   actionBtn: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: 12,
     padding: 16,
-    alignItems: 'center',
     marginHorizontal: 8,
+    gap: 8,
   },
   uploadBtn: {
     backgroundColor: '#6c47ff',
@@ -357,17 +455,23 @@ const styles = StyleSheet.create({
   },
   doneBox: {
     alignItems: 'center',
+    gap: 16,
   },
-  doneEmoji: {
-    fontSize: 64,
-    marginBottom: 16,
+  doneIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#0f2318',
+    borderWidth: 1,
+    borderColor: '#1a3a25',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   doneText: {
     color: '#4ade80',
     fontSize: 16,
     fontWeight: '600',
     textAlign: 'center',
-    marginBottom: 16,
   },
   infoBox: {
     marginTop: 48,

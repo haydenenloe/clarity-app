@@ -1,10 +1,19 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
 import { Slot, useRouter, usePathname } from 'expo-router'
+import { Feather } from '@expo/vector-icons'
 
-const TABS = [
-  { label: 'Record', emoji: '🎙️', path: '/record' },
-  { label: 'Sessions', emoji: '📋', path: '/sessions' },
-  { label: 'Chat', emoji: '💬', path: '/chat' },
+type Tab = {
+  label: string
+  icon: keyof typeof Feather.glyphMap
+  path: string
+}
+
+const TABS: Tab[] = [
+  { label: 'Sessions', icon: 'list', path: '/sessions' },
+  { label: 'Record', icon: 'mic', path: '/record' },
+  { label: 'Journal', icon: 'book-open', path: '/journal' },
+  { label: 'Chat', icon: 'message-circle', path: '/chat' },
+  { label: 'Settings', icon: 'settings', path: '/settings' },
 ]
 
 export default function AppLayout() {
@@ -18,14 +27,18 @@ export default function AppLayout() {
       </View>
       <View style={styles.tabBar}>
         {TABS.map((tab) => {
-          const isActive = pathname.includes(tab.path.replace('/', ''))
+          const isActive = pathname === tab.path || pathname.startsWith(tab.path + '/')
           return (
             <TouchableOpacity
               key={tab.label}
               style={styles.tab}
               onPress={() => router.push(tab.path as any)}
             >
-              <Text style={styles.emoji}>{tab.emoji}</Text>
+              <Feather
+                name={tab.icon}
+                size={22}
+                color={isActive ? '#6c47ff' : '#555'}
+              />
               <Text style={[styles.label, isActive && styles.labelActive]}>
                 {tab.label}
               </Text>
@@ -56,10 +69,7 @@ const styles = StyleSheet.create({
   tab: {
     flex: 1,
     alignItems: 'center',
-  },
-  emoji: {
-    fontSize: 22,
-    marginBottom: 2,
+    gap: 4,
   },
   label: {
     fontSize: 10,
