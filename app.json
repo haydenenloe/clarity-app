@@ -7,7 +7,7 @@
     "icon": "./assets/images/icon.png",
     "scheme": "clarity",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "ios": {
       "bundleIdentifier": "com.haydenenloe.clarity",
       "supportsTablet": false,
