@@ -48,11 +48,14 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!initialized) return
-    if (session) {
-      router.replace('/(app)/record')
-    } else {
-      router.replace('/(auth)/login')
-    }
+    // DEV BYPASS: skip auth for Expo Go testing
+    router.replace('/(app)/record')
+    // TODO: re-enable auth gate before shipping
+    // if (session) {
+    //   router.replace('/(app)/record')
+    // } else {
+    //   router.replace('/(auth)/login')
+    // }
   }, [session, initialized])
 
   return <Slot />
