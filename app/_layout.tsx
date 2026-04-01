@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Stack, router } from 'expo-router'
+import { Slot, router } from 'expo-router'
 import { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 
@@ -29,5 +29,5 @@ export default function RootLayout() {
     }
   }, [session, initialized])
 
-  return <Stack screenOptions={{ headerShown: false }} />
+  return <Slot />
 }
