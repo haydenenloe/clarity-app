@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native'
+import * as Linking from 'expo-linking'
 import { supabase } from '../../lib/supabase'
 
 export default function LoginScreen() {
@@ -23,10 +24,13 @@ export default function LoginScreen() {
       return
     }
     setLoading(true)
+    // In Expo Go: generates exp://192.168.x.x:8081/--/auth/callback
+    // In standalone build: generates clarity://auth/callback
+    const redirectTo = Linking.createURL('/auth/callback')
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim().toLowerCase(),
       options: {
-        emailRedirectTo: 'clarity://auth/callback',
+        emailRedirectTo: redirectTo,
       },
     })
     setLoading(false)
