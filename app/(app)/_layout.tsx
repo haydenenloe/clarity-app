@@ -1,59 +1,72 @@
-import { Tabs } from 'expo-router'
-import { View, Text } from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
+import { Slot, useRouter, usePathname } from 'expo-router'
 
-function TabIcon({ emoji, label, focused }: { emoji: string; label: string; focused: boolean }) {
+const TABS = [
+  { label: 'Record', emoji: '🎙️', path: '/record' },
+  { label: 'Sessions', emoji: '📋', path: '/sessions' },
+  { label: 'Chat', emoji: '💬', path: '/chat' },
+]
+
+export default function AppLayout() {
+  const router = useRouter()
+  const pathname = usePathname()
+
   return (
-    <View style={{ alignItems: 'center', gap: 2 }}>
-      <Text style={{ fontSize: 22 }}>{emoji}</Text>
-      <Text style={{ fontSize: 10, color: focused ? '#6c47ff' : '#666' }}>{label}</Text>
+    <View style={styles.container}>
+      <View style={styles.content}>
+        <Slot />
+      </View>
+      <View style={styles.tabBar}>
+        {TABS.map((tab) => {
+          const isActive = pathname.includes(tab.path.replace('/', ''))
+          return (
+            <TouchableOpacity
+              key={tab.label}
+              style={styles.tab}
+              onPress={() => router.push(tab.path as any)}
+            >
+              <Text style={styles.emoji}>{tab.emoji}</Text>
+              <Text style={[styles.label, isActive && styles.labelActive]}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          )
+        })}
+      </View>
     </View>
   )
 }
 
-export default function AppLayout() {
-  return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: '#0a0a0a',
-          borderTopColor: '#1a1a1a',
-          height: 80,
-          paddingBottom: 12,
-        },
-        tabBarShowLabel: false,
-      }}
-    >
-      <Tabs.Screen
-        name="record"
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <TabIcon emoji="🎙️" label="Record" focused={focused} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="sessions/index"
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <TabIcon emoji="📋" label="Sessions" focused={focused} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="sessions/[id]"
-        options={{
-          tabBarButton: () => null, // hide from tab bar
-        }}
-      />
-      <Tabs.Screen
-        name="chat"
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <TabIcon emoji="💬" label="Chat" focused={focused} />
-          ),
-        }}
-      />
-    </Tabs>
-  )
-}
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#0a0a0a',
+  },
+  content: {
+    flex: 1,
+  },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: '#0a0a0a',
+    borderTopWidth: 1,
+    borderTopColor: '#1a1a1a',
+    paddingBottom: 28,
+    paddingTop: 10,
+  },
+  tab: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  emoji: {
+    fontSize: 22,
+    marginBottom: 2,
+  },
+  label: {
+    fontSize: 10,
+    color: '#555',
+    fontWeight: '500',
+  },
+  labelActive: {
+    color: '#6c47ff',
+  },
+})
