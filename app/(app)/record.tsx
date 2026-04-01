@@ -9,7 +9,12 @@ import {
   ScrollView,
   AppState,
 } from 'react-native'
-import { Audio } from 'expo-av'
+import {
+  useAudioRecorder,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+  RecordingPresets,
+} from 'expo-audio'
 import * as FileSystem from 'expo-file-system'
 import { supabase } from '../../lib/supabase'
 import { API_BASE_URL } from '../../constants/config'
@@ -17,8 +22,9 @@ import { API_BASE_URL } from '../../constants/config'
 type RecordingState = 'idle' | 'recording' | 'stopped' | 'uploading' | 'processing' | 'done'
 
 export default function RecordScreen() {
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY)
+
   const [state, setState] = useState<RecordingState>('idle')
-  const [recording, setRecording] = useState<Audio.Recording | null>(null)
   const [recordingUri, setRecordingUri] = useState<string | null>(null)
   const [elapsed, setElapsed] = useState(0)
   const [isBackground, setIsBackground] = useState(false)
@@ -54,8 +60,8 @@ export default function RecordScreen() {
 
   const startRecording = async () => {
     try {
-      const { status } = await Audio.requestPermissionsAsync()
-      if (status !== 'granted') {
+      const { granted } = await requestRecordingPermissionsAsync()
+      if (!granted) {
         Alert.alert(
           'Microphone Permission Required',
           'Please allow microphone access in Settings to record sessions.'
@@ -63,17 +69,15 @@ export default function RecordScreen() {
         return
       }
 
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+        allowsBackgroundRecording: true,
       })
 
-      const { recording: newRecording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      )
+      await recorder.prepareToRecordAsync()
+      recorder.record()
 
-      setRecording(newRecording)
       setState('recording')
       setElapsed(0)
       setRecordingUri(null)
@@ -87,18 +91,16 @@ export default function RecordScreen() {
   }
 
   const stopRecording = async () => {
-    if (!recording) return
     try {
       if (timerRef.current) clearInterval(timerRef.current)
-      await recording.stopAndUnloadAsync()
-      const uri = recording.getURI()
+      await recorder.stop()
+      const uri = recorder.uri
       setRecordingUri(uri)
-      setRecording(null)
       setState('stopped')
 
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        staysActiveInBackground: false,
+      await setAudioModeAsync({
+        allowsRecording: false,
+        allowsBackgroundRecording: false,
       })
     } catch (err: any) {
       Alert.alert('Error', `Could not stop recording: ${err.message}`)
@@ -120,14 +122,20 @@ export default function RecordScreen() {
         encoding: FileSystem.EncodingType.Base64,
       })
 
-      const fileName = `recordings/${session.user.id}/${Date.now()}.m4a`
-      const fileData = Buffer.from(base64, 'base64')
+      // Convert to Uint8Array for Supabase upload
+      const binaryString = atob(base64)
+      const bytes = new Uint8Array(binaryString.length)
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i)
+      }
 
-      // Upload to Supabase Storage
+      const sessionId = `${Date.now()}`
+      const fileName = `${session.user.id}/${sessionId}.m4a`
+
       const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('audio')
-        .upload(fileName, fileData, {
-          contentType: 'audio/m4a',
+        .from('session-audio')
+        .upload(fileName, bytes, {
+          contentType: 'audio/mp4',
           upsert: false,
         })
 
@@ -136,15 +144,15 @@ export default function RecordScreen() {
       setStatusMessage('Processing session with AI...')
       setState('processing')
 
-      // Trigger processing via API
-      const response = await fetch(`${API_BASE_URL}/api/process-session`, {
+      // Create session record and trigger processing via API
+      const response = await fetch(`${API_BASE_URL}/api/process`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          storagePath: uploadData.path,
+          audioPath: uploadData.path,
           userId: session.user.id,
         }),
       })
@@ -232,7 +240,6 @@ export default function RecordScreen() {
         </View>
       )}
 
-      {/* Background recording info */}
       {state === 'idle' && (
         <View style={styles.infoBox}>
           <Text style={styles.infoTitle}>About background recording</Text>
@@ -273,7 +280,6 @@ const styles = StyleSheet.create({
   liveRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
     marginTop: 12,
   },
   liveDot: {
@@ -281,6 +287,7 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     backgroundColor: '#ff4444',
+    marginRight: 8,
   },
   liveText: {
     color: '#ff4444',
@@ -303,7 +310,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.5,
     shadowRadius: 16,
-    gap: 8,
   },
   stopBtn: {
     backgroundColor: '#ff4444',
@@ -311,6 +317,7 @@ const styles = StyleSheet.create({
   },
   recordBtnIcon: {
     fontSize: 40,
+    marginBottom: 8,
   },
   recordBtnText: {
     color: '#fff',
@@ -319,7 +326,6 @@ const styles = StyleSheet.create({
   },
   actionRow: {
     flexDirection: 'row',
-    gap: 16,
     marginTop: 8,
   },
   actionBtn: {
@@ -327,6 +333,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
+    marginHorizontal: 8,
   },
   uploadBtn: {
     backgroundColor: '#6c47ff',
@@ -341,25 +348,26 @@ const styles = StyleSheet.create({
   },
   loadingBox: {
     alignItems: 'center',
-    gap: 16,
     marginTop: 24,
   },
   loadingText: {
     color: '#888',
     fontSize: 15,
+    marginTop: 16,
   },
   doneBox: {
     alignItems: 'center',
-    gap: 16,
   },
   doneEmoji: {
     fontSize: 64,
+    marginBottom: 16,
   },
   doneText: {
     color: '#4ade80',
     fontSize: 16,
     fontWeight: '600',
     textAlign: 'center',
+    marginBottom: 16,
   },
   infoBox: {
     marginTop: 48,
@@ -367,12 +375,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 20,
     width: '100%',
-    gap: 8,
   },
   infoTitle: {
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
+    marginBottom: 8,
   },
   infoText: {
     color: '#666',

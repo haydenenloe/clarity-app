@@ -13,7 +13,9 @@
       "supportsTablet": false,
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Clarity needs microphone access to record your therapy sessions.",
-        "UIBackgroundModes": ["audio"]
+        "UIBackgroundModes": [
+          "audio"
+        ]
       }
     },
     "android": {
@@ -22,7 +24,9 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.haydenenloe.clarity",
-      "permissions": ["android.permission.RECORD_AUDIO"]
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -31,7 +35,7 @@
     },
     "plugins": [
       "expo-router",
-      "expo-av"
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true
